@@ -1,0 +1,12 @@
+1. Initialize absorption coefficients
+    - Initialize with true solution + noise
+    - What about application dependent initializations?
+2. Solve forward equation and obtain density of photons, u(x)
+    - Setup bilinear and linear forms
+3. Solve adjoint equation to obtain the adjoint variable
+    - Setup bilinear and linear forms
+4. Compute objective function and gradients
+    - Use Ren nonlinear paper for gradients and objective function
+5. Use BFGS to compute gradients of absorption coefficients
+6. Update absorption coefficients and go to 2 until convergence
+    - Convergence properties?
