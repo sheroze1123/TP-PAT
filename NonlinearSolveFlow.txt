@@ -7,6 +7,6 @@
     - Setup bilinear and linear forms
 4. Compute objective function and gradients
     - Use Ren nonlinear paper for gradients and objective function
-5. Use BFGS to compute gradients of absorption coefficients
+5. Use BFGS to update coefficients using computed gradients
 6. Update absorption coefficients and go to 2 until convergence
     - Convergence properties?
