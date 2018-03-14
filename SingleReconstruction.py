@@ -119,7 +119,7 @@ def gradient(gamma, sigma, mu, Gamma, u, v):
     obj_d_mu = z * Gamma * abs(u) * u * mu_test *  dx + v * abs(u) * u * mu_test * dx - \
         inner(kappa * nabla_grad(mu), nabla_grad(mu_test)) * dx
         
-    return obj_d_sigma, obj_d_mu
+    return assemble(obj_d_sigma), assemble(obj_d_mu)
     
 def L_BFGS(sigma, mu):
     '''
@@ -137,19 +137,19 @@ def L_BFGS(sigma, mu):
     y_mu = deque()
     rho_sigma = deque()
     rho_mu = deque()
-    alpha_sigma = [] * m
+    alpha_sigma = [] * m_MAX
+    alpha_mu = [] * m_MAX
+    converged = False
     
+    q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
+
     while converged:
-        q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
         # TODO: Conditions for convergence
 
         for i in range(0,m):
-            alpha_sigma[i] = rho[i]_sigma *  s_sigma[i].inner(q_sigma)
+            alpha_sigma[i] = rho_sigma[i] *  s_sigma[i].inner(q_sigma)
             q_sigma = q_sigma - alpha_sigma[i] * y[i]
         
-        gamma_k_sigma = s_sigma[-1].inner(y_sigma[-1])/y_sigma[-1].inner(y_sigma[-1])
-        r_sigma = gamma_k_sigma * q_sigma
-    
         gamma_k_sigma = s_sigma[-1].inner(y_sigma[-1])/y_sigma[-1].inner(y_sigma[-1])
         r_sigma = gamma_k_sigma * q_sigma
     
@@ -165,9 +165,38 @@ def L_BFGS(sigma, mu):
         p_mu_k = -r_mu
 
         # TODO: Satisfy Wolfe conditions for a
-        sigma = sigma + a_sigma * p_sigma_k
-        mu = mu + a_mu * p_mu_k
+        a_sigma = 1
+        a_mu = 1
 
+        sigma.vector() = sigma.vector() + a_sigma * p_sigma_k
+        mu.vector() = mu.vector() + a_mu * p_mu_k
 
+        k += 1
+        if m < m_MAX:
+            m += 1
 
+        s_sigma.append(a_sigma * p_sigma_k)
+        s_mu.append(a_mu * p_mu_k)
 
+        q_sigma_prev = q_sigma
+        q_mu_prev = q_mu
+        q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
+
+        y_sigma.append(q_sigma - q_sigma_prev)
+        y_mu.append(q_mu - q_mu_prev)
+
+        rho_sigma.append(1.0/y_sigma[-1].inner(s_sigma[-1]))
+        rho_mu.append(1.0/y_mu[-1].inner(s_mu[-1]))
+
+        if k >= m_MAX:
+            s_sigma.popleft()
+            s_mu.popleft()
+            y_sigma.popleft()
+            y_mu.popleft()
+            rho_sigma.popleft()
+            rho_mu.popleft()
+
+        grad_norm = norm(q_sigma) + norm(q_mu)
+
+        if grad_norm < 1e-2 or k == 20:
+            converged = True
