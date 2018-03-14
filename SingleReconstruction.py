@@ -137,19 +137,28 @@ def L_BFGS(sigma, mu):
     y_mu = deque()
     rho_sigma = deque()
     rho_mu = deque()
-    alpha_sigma = [] * m_MAX
-    alpha_mu = [] * m_MAX
+    alpha_sigma = [0] * m_MAX
+    alpha_mu = [0] * m_MAX
     converged = False
     
     q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
+    s_sigma.append(sigma.vector())
+    s_mu.append(mu.vector())
+    y_sigma.append(q_sigma)
+    y_mu.append(q_mu)
+    rho_sigma.append(1.0/y_sigma[-1].inner(s_sigma[-1]))
+    rho_mu.append(1.0/y_mu[-1].inner(s_mu[-1]))
 
-    while converged:
+
+    while not converged:
         # TODO: Conditions for convergence
 
         for i in range(0,m):
             alpha_sigma[i] = rho_sigma[i] *  s_sigma[i].inner(q_sigma)
-            q_sigma = q_sigma - alpha_sigma[i] * y[i]
-        
+            q_sigma = q_sigma - alpha_sigma[i] * y_sigma[i]
+            alpha_mu[i] = rho_mu[i] *  s_mu[i].inner(q_mu)
+            q_mu = q_mu - alpha_mu[i] * y_mu[i]
+                
         gamma_k_sigma = s_sigma[-1].inner(y_sigma[-1])/y_sigma[-1].inner(y_sigma[-1])
         r_sigma = gamma_k_sigma * q_sigma
     
@@ -159,7 +168,9 @@ def L_BFGS(sigma, mu):
         for i in range(m-1,-1,-1):
             # Iterate backwards
             beta_sigma = rho_sigma[i] * y_sigma[i].inner(r_sigma)
-            r_sigma = r_sigma + s_sigma[i]*(alpha_sigma[i] - beta) 
+            r_sigma = r_sigma + s_sigma[i]*(alpha_sigma[i] - beta_sigma)  
+            beta_mu = rho_mu[i] * y_mu[i].inner(r_mu)
+            r_mu = r_mu + s_mu[i]*(alpha_mu[i] - beta_mu)  
 
         p_sigma_k = -r_sigma
         p_mu_k = -r_mu
@@ -168,10 +179,11 @@ def L_BFGS(sigma, mu):
         a_sigma = 1
         a_mu = 1
 
-        sigma.vector() = sigma.vector() + a_sigma * p_sigma_k
-        mu.vector() = mu.vector() + a_mu * p_mu_k
+        sigma.vector()[:] = sigma.vector()[:] + a_sigma * p_sigma_k
+        mu.vector()[:] = mu.vector()[:] + a_mu * p_mu_k
 
         k += 1
+        print (k)
         if m < m_MAX:
             m += 1
 
