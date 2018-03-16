@@ -89,6 +89,84 @@ def regularization_cost(k, sigma, mu):
 def cost(Gamma, sigma, mu, u, H, k):
     return mismatch_cost(Gamma, sigma, mu, u, H_data) + regularization_cost(kappa, sigma, mu)
 
+def linesearch(f, g, x_0, d, f_x_0, g_x_0):
+    '''
+    Performs a linesearch satisfying the Wolfe conditions
+    in the direction of d
+    
+    Refer to Algorithm 3.5 in
+    Wright, J., & Nocedal, J. (2006). Numerical Optimization (2nd Edition)
+    for more information.
+    
+    Args:
+        f:     Objective function as a function of x
+        g:     Gradient of the objective function as a function of x
+        x_0:   Initial function argument vector
+        d:     Search direction
+        f_x_0: Objective functional value at x_0, i.e: f(x_0) 
+        g_x_0: Objective functional gradient value at x_0, i.e: f'(x_0) (in the direction of d)
+
+    Returns:
+        alpha: Step size 
+
+    Raises:
+        
+    '''
+    
+    def zoom(alpha_lo, alpha_hi):
+        k = 0
+        zoom_MAX = 4
+        while True:
+            #print ("Zoom iteration: {}, alpha_hi: {}, alpha_lo: {}".format(k, alpha_hi, alpha_lo))
+            alpha_j = 0.5*(alpha_lo + alpha_hi)
+            f_j = f(x_0 + alpha_j * d)
+            f_lo = f(x_0 + alpha_lo * d)
+            
+            if (f_j > f_x_0 + c_1 * alpha_j * g_x_0) or (f_j >= f_lo):
+                alpha_hi = alpha_j
+            else:
+                g_j = d.inner(g(x_0 + alpha_j * d))
+                if abs(g_j) <= -c_2 * g_x_0:
+                    return alpha_j
+                if g_j * (alpha_hi - alpha_lo) >= 0:
+                    alpha_hi = alpha_lo
+                alpha_lo = alpha_j
+            k += 1
+            if k > zoom_MAX:
+                return alpha_j
+    
+    c_1 = 1e-4
+    c_2 = 0.9
+    alpha_MAX = 20.0
+    alpha_i = 1.0
+    alpha_prev = 0.0
+    f_i_p = f_x_0
+    i = 1
+    
+    while True:
+        #print ("Iteration: {}, alpha: {}".format(i,alpha_i))
+        f_i = f(x_0 + alpha_i * d)
+        
+        if (f_i > f_x_0 + c_1 * alpha_i * g_x_0) or (i > 1 and f_i > f_i_p):
+            return zoom(alpha_prev, alpha_i)
+        
+        g_i = d.inner(g(x_0 + alpha_i * d))
+        
+        if abs(g_i) <= -c_2 * g_x_0:
+            return alpha_i
+        
+        if g_i >= 0:
+            return zoom(alpha_i, alpha_prev)
+        
+        alpha_prev = alpha_i
+        r = 0.8 #TODO: Examine this heuristic
+        alpha_i = alpha_prev + alpha_prev * r
+        f_i_p = f_i
+        i += 1
+        
+        if alpha_i > alpha_MAX:
+            return alpha_i
+
 def gradient(gamma, sigma, mu, Gamma, u, v):
     '''
     Computes the gradient of the objective function with respect
@@ -120,7 +198,8 @@ def gradient(gamma, sigma, mu, Gamma, u, v):
         inner(kappa * nabla_grad(mu), nabla_grad(mu_test)) * dx
         
     return assemble(obj_d_sigma), assemble(obj_d_mu)
-    
+
+
 def L_BFGS(sigma, mu):
     '''
     Limited memory BFGS quasi-Newton method implementation used to 
@@ -128,6 +207,23 @@ def L_BFGS(sigma, mu):
     For more information about the limited-memory BFGS method, refer to 
     Numerical Optimization by Nocedal and Wright
     '''
+    def cost_sigma(s_vec):
+        s = Function(Vs)
+        s.vector().set_local(s_vec.array()[:])
+        return cost(Gamma, s, mu, u, H_data, k)
+    def grad_sigma(s_vec):
+        s = Function(Vs)
+        s.vector().set_local(s_vec.array()[:])
+        return gradient(gamma, s, mu, Gamma, u, v)[0]
+    def cost_mu(m_vec):
+        m = Function(Vs)
+        m.vector().set_local(m_vec.array()[:])
+        return cost(Gamma, sigma, m, u, H_data, k)
+    def grad_mu(m_vec):
+        m = Function(Vs)
+        m.vector().set_local(m_vec.array()[:])
+        return gradient(gamma, sigma, m, Gamma, u, v)[1]
+    
     k = 0
     m_MAX = 7
     m = 1
@@ -141,17 +237,47 @@ def L_BFGS(sigma, mu):
     alpha_mu = [0] * m_MAX
     converged = False
     
+    # Take a single step
     q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
-    s_sigma.append(sigma.vector())
-    s_mu.append(mu.vector())
-    y_sigma.append(q_sigma)
-    y_mu.append(q_mu)
+    c = cost(Gamma, sigma, mu, u, H_data, k)
+    
+    a_sigma = linesearch(cost_sigma, grad_sigma, sigma.vector(), -q_sigma, c, q_sigma.inner(q_sigma))
+    a_mu = linesearch(cost_mu, grad_mu, mu.vector(), -q_mu, c, q_mu.inner(q_mu))
+    
+    sigma.vector()[:] = sigma.vector()[:] - a_sigma * q_sigma
+    mu.vector()[:] = mu.vector()[:] - a_mu * q_mu
+    
+    s_sigma.append(-a_sigma * q_sigma)
+    s_mu.append(-a_mu * q_mu)
+    
+    q_sigma_prev = q_sigma
+    q_mu_prev = q_mu
+    
+    q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
+    
+    y_sigma.append(q_sigma - q_sigma_prev)
+    y_mu.append(q_mu - q_mu_prev)
     rho_sigma.append(1.0/y_sigma[-1].inner(s_sigma[-1]))
     rho_mu.append(1.0/y_mu[-1].inner(s_mu[-1]))
 
-
     while not converged:
         # TODO: Conditions for convergence
+        
+        c = cost(Gamma, sigma, mu, u, H_data, k)
+        print ("cost: {}".format(c))
+
+        if c < 1e-5 or k == 20:
+            if c < 1e1:
+                print ("Converged")
+            else:
+                print ("Maximum iterations reached")
+            converged = True
+            break
+        
+        plt.figure(figsize=(15,5))
+        nb.plot(sigma, subplot_loc=121, mytitle="sigma", show_axis='on')
+        nb.plot(mu, subplot_loc=122, mytitle="mu")
+        plt.show()
 
         for i in range(0,m):
             alpha_sigma[i] = rho_sigma[i] *  s_sigma[i].inner(q_sigma)
@@ -176,14 +302,13 @@ def L_BFGS(sigma, mu):
         p_mu_k = -r_mu
 
         # TODO: Satisfy Wolfe conditions for a
-        a_sigma = 1
-        a_mu = 1
+        a_sigma = linesearch(cost_sigma, grad_sigma, sigma.vector(), p_sigma_k, c, q_sigma.inner(p_sigma_k))
+        a_mu = linesearch(cost_mu, grad_mu, mu.vector(), p_mu_k, c, q_mu.inner(p_mu_k))
 
         sigma.vector()[:] = sigma.vector()[:] + a_sigma * p_sigma_k
         mu.vector()[:] = mu.vector()[:] + a_mu * p_mu_k
 
         k += 1
-        print (k)
         if m < m_MAX:
             m += 1
 
@@ -193,6 +318,9 @@ def L_BFGS(sigma, mu):
         q_sigma_prev = q_sigma
         q_mu_prev = q_mu
         q_sigma, q_mu = gradient(gamma, sigma, mu, Gamma, u, v)
+        
+        print ("obj_d_sigma norm: {}".format(norm(q_sigma)))
+        print ("obj_d_mu norm: {}".format(norm(q_mu)))
 
         y_sigma.append(q_sigma - q_sigma_prev)
         y_mu.append(q_mu - q_mu_prev)
@@ -207,8 +335,6 @@ def L_BFGS(sigma, mu):
             y_mu.popleft()
             rho_sigma.popleft()
             rho_mu.popleft()
+            
 
-        grad_norm = norm(q_sigma) + norm(q_mu)
-
-        if grad_norm < 1e-2 or k == 20:
-            converged = True
+L_BFGS(sigma, mu)
