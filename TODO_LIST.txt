@@ -1,0 +1,21 @@
+CRITICAL
+
+1. Implement multiple datum reconstructions
+2. Select appropriate boundary functions g
+3. Debug convergence issues
+4. Setup proper initial conditions for sigma and mu
+5. Examine function spaces carefully
+6. Add noise to data according to paper
+7. Revisit convergence conditions
+
+IMPORTANT
+
+1. Linesearch step size update heuristic check
+2. Proper function documentation using Google style
+
+
+NICE TO HAVE
+
+1. Online documentation generation
+2. Explore C++ implementation
+3. Compare with Rongting implementation

@@ -301,7 +301,6 @@ def L_BFGS(sigma, mu):
         p_sigma_k = -r_sigma
         p_mu_k = -r_mu
 
-        # TODO: Satisfy Wolfe conditions for a
         a_sigma = linesearch(cost_sigma, grad_sigma, sigma.vector(), p_sigma_k, c, q_sigma.inner(p_sigma_k))
         a_mu = linesearch(cost_mu, grad_mu, mu.vector(), p_mu_k, c, q_mu.inner(p_mu_k))
 
